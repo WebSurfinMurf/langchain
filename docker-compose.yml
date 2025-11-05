@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  langserve:
+    image: python:3.11-slim
+    container_name: langserve
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./app:/app
+      - langchain_data:/data
+    ports:
+      - "8001:8000"
+    networks:
+      - traefik-net
+      - postgres-net
+    environment:
+      - POSTGRES_HOST=postgres-vector
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=vectordb
+      - POSTGRES_USER=vector_admin
+    env_file:
+      - ../secrets/langchain.env
+    command: >
+      sh -c "
+      apt-get update && apt-get install -y curl &&
+      pip install --no-cache-dir 'pydantic>=2.0,<3.0' 'fastapi>=0.100.0' langchain 'langserve>=0.0.30' langsmith langgraph langchain-postgres langchain-openai langchain-community psycopg[binary] psycopg2-binary uvicorn[standard] sse-starlette typing-extensions &&
+      python -m uvicorn server:app --host 0.0.0.0 --port 8000
+      "
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.langserve.rule=Host(`langserve.ai-servicers.com`)"
+      - "traefik.http.routers.langserve.entrypoints=websecure"
+      - "traefik.http.routers.langserve.tls=true"
+      - "traefik.http.routers.langserve.tls.certresolver=letsencrypt"
+      - "traefik.http.services.langserve.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  traefik-net:
+    external: true
+  postgres-net:
+    external: true
+
+volumes:
+  langchain_data:
+    driver: local
