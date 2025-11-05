@@ -13,18 +13,17 @@ services:
       - "8001:8000"
     networks:
       - traefik-net
-      - postgres-net
+      - qdrant-net
     environment:
-      - POSTGRES_HOST=postgres-vector
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=vectordb
-      - POSTGRES_USER=vector_admin
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=langchain_docs
     env_file:
       - ../secrets/langchain.env
     command: >
       sh -c "
       apt-get update && apt-get install -y curl &&
-      pip install --no-cache-dir 'pydantic>=2.0,<3.0' 'fastapi>=0.100.0' langchain 'langserve>=0.0.30' langsmith langgraph langchain-postgres langchain-openai langchain-community psycopg[binary] psycopg2-binary uvicorn[standard] sse-starlette typing-extensions &&
+      pip install --no-cache-dir 'pydantic>=2.0,<3.0' 'fastapi>=0.100.0' langchain 'langserve>=0.0.30' langsmith langgraph langchain-qdrant qdrant-client langchain-openai langchain-community uvicorn[standard] sse-starlette typing-extensions &&
       python -m uvicorn server:app --host 0.0.0.0 --port 8000
       "
     labels:
@@ -45,7 +44,7 @@ services:
 networks:
   traefik-net:
     external: true
-  postgres-net:
+  qdrant-net:
     external: true
 
 volumes:

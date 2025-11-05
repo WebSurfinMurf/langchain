@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from langserve import add_routes
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_postgres import PGVector
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -33,15 +34,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY", "")
 LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "langchain-project")
 
-# PostgreSQL Vector Database Configuration
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres-vector")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "vectordb")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "vector_admin")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
-
-# Connection string for pgvector
-CONNECTION_STRING = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+# Qdrant Vector Database Configuration
+QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "langchain_docs")
 
 # Enable LangSmith tracing if API key is provided
 if LANGSMITH_API_KEY:
@@ -57,13 +53,16 @@ try:
     embeddings = OpenAIEmbeddings() if OPENAI_API_KEY else None
 
     if embeddings:
-        vectorstore = PGVector(
-            embeddings=embeddings,
-            collection_name="langchain_docs",
-            connection=CONNECTION_STRING,
-            use_jsonb=True,
+        # Initialize Qdrant client
+        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+        # Initialize vector store
+        vectorstore = QdrantVectorStore(
+            client=qdrant_client,
+            collection_name=QDRANT_COLLECTION,
+            embedding=embeddings,
         )
-        logger.info("Vector store initialized successfully")
+        logger.info(f"Qdrant vector store initialized successfully (collection: {QDRANT_COLLECTION})")
     else:
         vectorstore = None
         logger.warning("OpenAI API key not set - vector store disabled")
@@ -193,7 +192,7 @@ async def health():
             "langsmith": bool(LANGSMITH_API_KEY),
             "openai": bool(OPENAI_API_KEY),
             "vectorstore": vectorstore is not None,
-            "postgres": POSTGRES_HOST != "",
+            "qdrant": QDRANT_HOST != "",
         }
     }
     return status
