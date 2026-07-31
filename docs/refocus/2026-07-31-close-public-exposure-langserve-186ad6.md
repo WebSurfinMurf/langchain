@@ -71,10 +71,13 @@ The ecosystem exam found `langserve.ai-servicers.com` redirecting to an open /do
 - [x] **Localhost health check still passes.** `http://localhost:8001/health` → `200`
       `{"status":"healthy",...}`; `/chains` → `200`; docker healthcheck reports `healthy`.
       `deploy.sh` completed exit 0 with no timeout warning (health returned at ~30s).
-- [x] **Change committed.** `b38bb68` (the change) and `dc6664e` (dependency-drift docs).
-      **Local commits only — not pushed.** The brief said not to push to main without
-      checking project conventions; this repo's remote is
+- [x] **Change committed.** Six commits, working tree clean:
+      `b38bb68` the remediation · `dc6664e` dependency-drift docs · `8e02ff1` this Result ·
+      `d3de7fe` docs/context seed · `f718c1e` + one follow-up `.gitignore` hygiene.
+      **`main` is 6 commits ahead of `origin/main` and NOT pushed.** The brief said not to
+      push to main without checking project conventions; the remote is
       `git@github.com:WebSurfinMurf/langchain.git` and no push convention was documented.
+      **Someone must decide whether to push.**
 
 ### Summary
 Removed the seven `traefik.*` router labels and rebound the published port from
@@ -82,8 +85,15 @@ Removed the seven `traefik.*` router labels and rebound the published port from
 `deploy.sh`. Both edits were necessary — the container published on `0.0.0.0`, so label
 removal alone would have left `http://<host-ip>:8001` open on the LAN. Verified by direct
 measurement rather than inference: the hostname 404s, a single loopback listener remains,
-the LAN IP refuses, and the two real consumers (`deploy.sh:36` health check,
-`test_example.py:9`) both use `localhost` and are unaffected.
+and the LAN IP refuses.
+
+**Consumer impact, stated precisely.** `deploy.sh:36`'s health check was **measured** —
+it passed. `test_example.py:9` was **not executed**; it is unaffected *by construction*
+(its `BASE_URL` is `http://localhost:8001`, which a loopback bind does not change).
+Running it would not have been informative: it exercises `/chat` and `/rag`, both of which
+fail on the placeholder `OPENAI_API_KEY` regardless of this change, so a failure would
+have been indistinguishable from a regression. `done_when` required only the deploy.sh
+health check.
 
 **Severity correction for the parent's sequencing** (stated as fact, not urgency
 escalation): `OPENAI_API_KEY` in `secrets/langchain.env` is the literal placeholder
@@ -110,6 +120,12 @@ placeholder API key and is pre-existing, not drift.
 - `docs/README-pip-freezes.md` — which freeze is which, the drift table, and the fix
 - `CLAUDE.md` / `README.md` / `INSTALLATION_SUMMARY.md` / `deploy.sh` — stopped advertising
   the dead public URL; added the drift, placeholder-key, and qdrant-skew Known Issues
+- `docs/context/architecture.md` — loopback perimeter, Qdrant (not pgvector), conditional
+  chain registration
+- `docs/context/security.md` — trust boundary, why the router existed, re-exposure checklist
+- `docs/context/operations.md` — deploy/verify commands incl. perimeter regression checks
+- `docs/context/gotchas.md` — unpinned-pip hazard, label≠port, dotfiles-in-worktree
+- `.gitignore` — ignores the stray home dotfiles and the generated refocus INDEX
 
 ### Suggested follow-ups (parent decides)
 - **`projects/nginx`** — `remove-langserve-link-from-portal`: `sites/langchain-portal/index.html:170-252`
@@ -127,12 +143,32 @@ placeholder API key and is pre-existing, not drift.
   whether this service is wanted at all before spending a key on it.
 - **`projects/qdrant`** — `resolve-client-server-version-skew`: client 1.18.0 vs server
   1.15.5 now exceeds the supported minor delta (warning logged, still functional).
-- **Repo hygiene (here, low priority)** — the `langchain` repo's working tree contains
-  untracked home dotfiles at its root (`.bashrc`, `.gitconfig`, `.mcp.json`, `.idea`,
-  `.ssh`-adjacent config). A `git add -A` in this repo would publish them to GitHub.
-  Staging was done by explicit path this session; add a `.gitignore` before that bites.
+- ~~Repo hygiene — home dotfiles at the repo root~~ — **DONE this session** (`f718c1e`
+  + follow-up). `.bashrc`, `.gitconfig`, `.mcp.json`, `.claude/`, `.idea`, `.vscode` etc.
+  are now gitignored, so a `git add -A` no longer publishes them to GitHub. No sibling
+  needed.
+- **Here (follow-on, medium)** — `pin-langchain-dependencies`: replace the compose
+  `command:`'s unpinned pip install with a Dockerfile + `requirements.txt` seeded from
+  `docs/pip-freeze-2026-07-31-post-change.txt`. This is the architecturally correct fix
+  for the drift hazard; until it lands, every restart is an uncontrolled upgrade.
+- **Here (follow-on, low)** — `context-save-init`: only 4 of the 8 canonical
+  `docs/context/` files exist (see Material changes). Run `/context-save init` to complete
+  the set.
 
 ### Material changes (for /context-save)
+
+> **`/context-save` was chained and produced 4 of the 8 canonical files.** This project
+> had **no** `docs/context/` at all. Rather than scaffold eight mostly-empty templates
+> (which would violate the skill's "only write what IS true" rule), the four files backed
+> by verified state were written: `architecture`, `security`, `operations`, `gotchas`.
+> **Still absent: `requirements`, `interfaces`, `conventions`, `testing`, `invariants`.**
+> Treat the context set as partial, not complete.
+>
+> **Test-gap scan:** no business-logic source changed this session (`app/server.py`
+> untouched); the diff is compose/deploy/docs only. No new test gaps introduced. The
+> pre-existing gap — `test_example.py` cannot pass while `OPENAI_API_KEY` is a
+> placeholder — is unchanged, and is a credentials problem, not a coverage problem.
+
 - **architecture** — langserve is now **loopback-only**: no Traefik router, no public
   hostname, host port bound to `127.0.0.1:8001`. Consumers must use `localhost`. Container
   remains attached to `traefik-net` (no labels ⇒ no route) pending the paired detach above.
@@ -142,9 +178,14 @@ placeholder API key and is pre-existing, not drift.
 - **gotchas** — `/rag` is conditionally registered (`app/server.py:101`,
   `if llm and vectorstore:`). Its absence from `/chains` indicates a credential/vector-store
   failure, not a routing bug.
+- **operations** — deploy/verify procedure now includes the two perimeter regression
+  checks (hostname must 404, LAN IP must not answer) and the "capture `pip freeze` before
+  recreating" precondition. Also records that `deploy.sh` exit 0 does **not** imply a
+  passing health check (`curl -f` inside an `if` cannot trip `set -e`).
 - **security** — Traefik auth is opt-in per router label; this service had a public
   `websecure` router with no auth middleware. The systemic fix (a CI check rejecting public
-  routers without auth) is `projects/cicd` scope, §6 of the remediation plan.
+  routers without auth) is `projects/cicd` scope, §6 of the remediation plan. Also records
+  the accurate severity: the placeholder API key meant the paid-abuse vector was not live.
 
 ### Child session
 - Session jsonl: `~/.claude/projects/-home-administrator-projects-langchain/186ad6a4-1c7a-44d7-ac19-fad323fd126d.jsonl`
