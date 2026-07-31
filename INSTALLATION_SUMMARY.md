@@ -36,8 +36,8 @@ fastapi (Web framework)
 - **Networks**: traefik-net, postgres-net
 
 ### Access Points
-- **Production URL**: https://langserve.ai-servicers.com (via Traefik)
-- **Local API**: http://localhost:8001
+- **Production URL**: none — loopback-only since 2026-07-31 (Traefik router removed)
+- **Local API**: http://127.0.0.1:8001
 - **API Documentation**: http://localhost:8001/docs
 - **Health Check**: http://localhost:8001/health
 
@@ -117,11 +117,12 @@ POSTGRES_PASSWORD=Pass123qp  # From postgres-vector deployment
 1. **traefik-net** - External HTTPS access via Traefik reverse proxy
 2. **postgres-net** - Internal database connectivity
 
-### Traefik Labels (HTTPS Routing)
-- **Domain**: langserve.ai-servicers.com
-- **Entry Point**: websecure (443)
-- **TLS**: Let's Encrypt automatic certificate
-- **Load Balancer**: Port 8000 (internal)
+### Traefik Labels (HTTPS Routing) — REMOVED 2026-07-31
+The `langserve.ai-servicers.com` router (websecure / Let's Encrypt / backend 8000)
+was deleted as part of the security remediation plan Phase 1c: it served `/docs`
+and the model-backed invoke/stream endpoints with no auth middleware. The container
+remains attached to `traefik-net` but publishes no router. Host port 8001 is bound
+to `127.0.0.1`.
 
 ## Verification Steps Completed
 

@@ -33,8 +33,11 @@ cd /home/administrator/projects/langchain
 ### 3. Access
 
 - **API Docs**: http://localhost:8001/docs
-- **Production**: https://langserve.ai-servicers.com
 - **Health Check**: http://localhost:8001/health
+
+> Loopback-only since 2026-07-31. There is no public URL and port 8001 is bound to
+> `127.0.0.1` — reachable from this host only, not from the LAN. See the security
+> remediation plan (Phase 1c).
 
 ## Available Endpoints
 

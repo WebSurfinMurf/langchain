@@ -17,11 +17,26 @@ Complete LangChain deployment providing REST API endpoints for AI applications:
 - **Status**: ✅ Ready for deployment
 - **Container**: langserve
 - **Image**: python:3.11-slim (with LangChain packages)
-- **Port**: 8001 (external), 8000 (internal)
-- **URL**: https://langserve.ai-servicers.com
+- **Port**: 127.0.0.1:8001 (host, loopback-only), 8000 (internal)
+- **URL**: none — loopback-only since 2026-07-31 (public Traefik router removed)
 - **Vector DB**: postgres-vector:5432
 
 ## 📝 Recent Work & Changes
+
+### Session: 2026-07-31 — Public exposure closed (security remediation Phase 1c)
+- Removed the Traefik router labels (`langserve.ai-servicers.com` served `/docs` and the
+  invoke/stream endpoints with **no auth middleware**).
+- Rebound the host port `8001:8000` → `127.0.0.1:8001:8000`. Label removal alone was
+  cosmetic — the container was publishing on `0.0.0.0`.
+- Verified: public hostname → 404, `ss -ltn` shows a single `127.0.0.1:8001` listener,
+  LAN IP `:8001` does not answer, `localhost:8001/health` → 200, `/chains` → 200.
+- ⚠️ Recreating the container re-ran the **unpinned** `pip install` in `command:`, moving
+  the whole dependency set forward (langchain 1.0.3 → 1.3.14, fastapi 0.121 → 0.141,
+  qdrant-client 1.15.1 → 1.18.0). Pre-change versions captured in
+  `docs/rollback-pip-freeze-2026-07-31.txt`. **This will happen on every restart** —
+  see Known Issues.
+- Container remains on `traefik-net` (no labels ⇒ no router). Detaching it is the correct
+  end state but is coupled to `traefik/fix-network-automated.sh`, a different project.
 
 ### Session: 2025-09-30
 - **Initial Setup**: Created LangChain project structure
@@ -95,8 +110,8 @@ POSTGRES_PASSWORD=<see secrets/langchain.env>
 ## 🌐 Access & Management
 
 ### URLs
-- **Production API**: https://langserve.ai-servicers.com
-- **Local API**: http://localhost:8001
+- **Production API**: none — no public route. Loopback-only since 2026-07-31.
+- **Local API**: http://127.0.0.1:8001
 - **API Documentation**: http://localhost:8001/docs
 - **Health Check**: http://localhost:8001/health
 - **Available Chains**: http://localhost:8001/chains
@@ -301,6 +316,20 @@ See postgres-vector documentation for database backup procedures.
 
 ## Known Issues & TODOs
 
+- [ ] **Unpinned dependency install.** `docker-compose.yml`'s `command:` runs a bare
+      `pip install langchain langserve>=0.0.30 ...` on every container start, so any
+      recreation silently upgrades the entire stack from PyPI. Correct fix: a Dockerfile
+      with a pinned `requirements.txt` (seed it from
+      `docs/rollback-pip-freeze-2026-07-31.txt`). Until then, "restart" is an
+      uncontrolled upgrade and rollback-by-config does not restore the working version set.
+- [ ] **`OPENAI_API_KEY` is a placeholder** (`your_ope...here`) in
+      `secrets/langchain.env` — vector store init fails 401, so `/rag` is not registered
+      and `/chains` lists only `chat` and `graph`. Pre-existing, unrelated to the
+      2026-07-31 exposure change.
+- [ ] **qdrant-client 1.18.0 vs qdrant server 1.15.5** version-skew warning, introduced by
+      the unpinned reinstall above. Client currently works; pin or upgrade the server.
+- [ ] Detach from `traefik-net` (no router since 2026-07-31) — coupled to
+      `traefik/fix-network-automated.sh:84`, which force-attaches langserve.
 - [ ] Add authentication to API endpoints (OAuth2 proxy?)
 - [ ] Create example notebooks for common use cases
 - [ ] Add more chain examples (SQL, agents, tools)

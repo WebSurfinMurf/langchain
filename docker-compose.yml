@@ -9,8 +9,10 @@ services:
     volumes:
       - ./app:/app
       - langchain_data:/data
+    # Loopback-only: no public Traefik router, no LAN-reachable host port.
+    # Consumers are deploy.sh's health check and test_example.py, both localhost.
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     networks:
       - traefik-net
       - qdrant-net
@@ -26,14 +28,10 @@ services:
       pip install --no-cache-dir 'pydantic>=2.0,<3.0' 'fastapi>=0.100.0' langchain 'langserve>=0.0.30' langsmith langgraph langchain-qdrant qdrant-client langchain-openai langchain-community uvicorn[standard] sse-starlette typing-extensions &&
       python -m uvicorn server:app --host 0.0.0.0 --port 8000
       "
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik-net"
-      - "traefik.http.routers.langserve.rule=Host(`langserve.ai-servicers.com`)"
-      - "traefik.http.routers.langserve.entrypoints=websecure"
-      - "traefik.http.routers.langserve.tls=true"
-      - "traefik.http.routers.langserve.tls.certresolver=letsencrypt"
-      - "traefik.http.services.langserve.loadbalancer.server.port=8000"
+    # Traefik router removed 2026-07-31 (security remediation plan, Phase 1c):
+    # langserve.ai-servicers.com served /docs and the model-backed invoke/stream
+    # endpoints with no auth middleware. Zero programmatic consumers used the
+    # public hostname. To restore, re-add traefik.enable / router labels here.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
