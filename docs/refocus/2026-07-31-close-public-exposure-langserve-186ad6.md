@@ -1,12 +1,12 @@
 ---
 id: 2026-07-31-close-public-exposure-langserve-186ad6
-status: in-progress
+status: result
 child_session_id: 186ad6a4-1c7a-44d7-ac19-fad323fd126d
 spawn_mode: execute
 tier: medium
 spawned_at: 2026-07-31T15:27:07Z
 launched_at: 2026-07-31T15:27:25Z
-completed_at: 2026-07-31T15:40:00Z
+completed_at: 2026-07-31T15:44:00Z
 source_dir: /home/administrator/projects/cicd
 source_session_id: unknown
 dest_dir: /home/administrator/projects/langchain
